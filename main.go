@@ -28,21 +28,23 @@ var (
 	border_middle_top_right = "├"
 
 	//colors
-	red = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	red       = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	lightGray = lipgloss.NewStyle().Foreground(lipgloss.Color("#a1a6a2"))
+	gray      = lipgloss.NewStyle().Foreground(lipgloss.Color("#484a48"))
+	white     = lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff"))
+	grayCol   = lipgloss.Color("#484a48")
 )
 
-
-type FM struct{
-	dir    string
-	files  []os.DirEntry
-	quit   bool
-	pos    int
-	height int
-	offset int
-	maxH   int
+type FM struct {
+	dir          string
+	files        []os.DirEntry
+	quit         bool
+	pos          int
+	height       int
+	offset       int
+	maxH         int
 	isFileLocked bool
 }
-
 
 type IconStyle struct {
 	Icon  string
@@ -166,15 +168,17 @@ var Icons = map[string]IconStyle{
 	"zip":          {Icon: "\uf410", Color: "#e74c3c"},
 }
 
-type statB struct {
+type metaData struct {
+	name         string
+	size         int32
+	modTime      string
 	instructions string
-	currFileSize int32
-	currFileName string
 }
 
 // Model defines the application's state
 type model struct {
-	fm			 FM
+	fm   FM
+	meta metaData
 }
 
 func generateBorder() lipgloss.Border {
@@ -205,19 +209,19 @@ func getFileIcon(filename string) (string, string) {
 
 // Initialize the model
 func initialModel() model {
-    pwd, _ := os.Getwd()
-    files, err := os.ReadDir(pwd)
-    if err != nil {
-        log.Fatal("couldn't fetch directory")
-    }
+	pwd, _ := os.Getwd()
+	files, err := os.ReadDir(pwd)
+	if err != nil {
+		log.Fatal("couldn't fetch directory")
+	}
 
-    fm := FM{
-        dir:    pwd,
-        files:  files,
-        // Initialize other fields of FM as needed
-    }
+	fm := FM{
+		dir:   pwd,
+		files: files,
+		// Initialize other fields of FM as needed
+	}
 
-    return model{fm: fm}
+	return model{fm: fm}
 }
 
 // Init is called when the program starts
@@ -339,8 +343,8 @@ func (m model) View() string {
 			beforeStyle := style
 			if !m.fm.files[i].IsDir() {
 				color, Icon := getFileIcon(filepath.Join(m.fm.dir, m.fm.files[i].Name()))
-				before = Icon+" "
-				if color != "NONE"{
+				before = Icon + " "
+				if color != "NONE" {
 					beforeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 				}
 			} else if m.fm.files[i].IsDir() {
@@ -359,31 +363,56 @@ func (m model) View() string {
 	combined := strings.Join(text, "\n")
 	combined = boxStyle.Render(combined)
 	s += combined
-	var statbar statB
-	statString := ""
+	var metaData metaData
+	var final string
+	var MBord = generateBorder()
+	if width-8 >= 0 {
+		MBord.Top = border_top + border_middle_top_left + " Metadata " + border_middle_top_right + strings.Repeat(border_top, width-8)
+	} else {
+		MBord.Top = border_top + border_middle_top_left + " Metadata " + border_middle_top_right
+	}
 	if len(m.fm.files) > 0 {
-		statbar.currFileName = m.fm.files[m.fm.pos].Name()
+		metaData.name = m.fm.files[m.fm.pos].Name()
+		for i, _ := range metaData.name {
+			if i%width-1-len(" file name: ") == 0 {
+				metaData.name = metaData.name[:i] + "\n" + metaData.name[i:]
+			}
+		}
 		if !m.fm.files[m.fm.pos].IsDir() {
 			fileStats, err := os.Stat(filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name()))
 			if err == nil {
-				statbar.currFileSize = int32(fileStats.Size())
+				metaData.size = int32(fileStats.Size())
+				metaData.modTime = fileStats.ModTime().Format("02-01-2006 15:04:05")
 			} else {
 				panic(err)
 			}
 		}
-		statbar.instructions = "press q to quit"
+		Finstruction := gray.Render("press ") + lightGray.Render("q") + gray.Render(" to ") + lightGray.Render("quit")
 		if instruction != "" {
-			statbar.instructions += " | " + red.Render(instruction)
+			Finstruction += gray.Render(" | ") + red.Render(instruction)
 		}
-		statString = "File name: " + statbar.currFileName + " | "
+		metaData.instructions = Finstruction
+		final = gray.Render("File name: ") + white.Render(metaData.name) + "\n"
 		if !m.fm.files[m.fm.pos].IsDir() {
-			statString += "File size (bytes): " + fmt.Sprint(statbar.currFileSize) + " | "
+			metaData.modTime = "\n" + strings.ReplaceAll(metaData.modTime, " ", "\n")
+			final += gray.Render("File size (bytes): ") + white.Render(fmt.Sprint(metaData.size)) + "\n" + gray.Render("Date modified: ") + white.Render(metaData.modTime) + "\n"
 		}
-		statString += statbar.instructions
+		final += "\n" + metaData.instructions
+		lines := strings.Count(final, "\n")
+		if lines < 7 {
+			final += strings.Repeat("\n", 7-lines)
+		}
 	} else {
-		statString = "This folder is empty | press q to quit"
+		final = "This folder is empty | press q to quit"
 	}
-	s += "\n" + statString
+	metaStyle := lipgloss.NewStyle().
+		Width(width).
+		Border(MBord).
+		BorderForeground(grayCol).
+		PaddingRight(1).
+		Align(lipgloss.Left).
+		PaddingLeft(1)
+	s += "\n" + metaStyle.Render(final)
 	instruction = ""
 	return s
 }
