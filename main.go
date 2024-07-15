@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"bufio"
 	"log"
 	"os"
+	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -169,10 +171,9 @@ var Icons = map[string]IconStyle{
 }
 
 type metaData struct {
-	name         string
-	size         int32
-	modTime      string
-	instructions string
+	name    string
+	size    int32
+	modTime string
 }
 
 // Model defines the application's state
@@ -306,15 +307,18 @@ func (m model) View() string {
 		p.RestoreTerminal()
 		return ""
 	}
-
 	var s string
-
-	// Calculate width of the screen
-	width := m.fm.height + 4 // Adjust as necessary
+	const maxWidth = 50
+	width := m.fm.height + 4
 	folderName := filepath.Base(m.fm.dir)
 	border := generateBorder()
-	border.Top = border_top + border_middle_top_left + " " + folderName + " " + border_middle_top_right + strings.Repeat(border_top, width-len(folderName))
-	// Create a style for the box
+	// Ensure repeat count is non-negative
+	repeatCount := width - len(folderName) - 6
+	if repeatCount < 0 {
+		repeatCount = 0
+	}
+	border.Top = border_top + border_middle_top_left + " " + folderName + " " + border_middle_top_right + strings.Repeat(border_top, repeatCount)
+	
 	boxStyle := lipgloss.NewStyle().
 		Width(width).
 		Align(lipgloss.Left).
@@ -328,12 +332,11 @@ func (m model) View() string {
 		Foreground(lipgloss.Color("115"))
 	var text []string
 
-	// Display files within the current window view
 	for i := m.fm.offset; i < m.fm.offset+m.fm.maxH; i++ {
 		if i < len(m.fm.files) {
 			name := m.fm.files[i].Name()
-			if len(m.fm.files[i].Name()) > width-6 {
-				name = m.fm.files[i].Name()[:width-6] + "…"
+			if len(name) > width-6 {
+				name = name[:width-6] + "…"
 			}
 			style := fileStyle
 			if i == m.fm.pos {
@@ -362,22 +365,51 @@ func (m model) View() string {
 	}
 	combined := strings.Join(text, "\n")
 	combined = boxStyle.Render(combined)
-	s += combined
+
+	prevStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("103")).
+		PaddingRight(2).
+		MarginLeft(2)
+
+	var filePrev string
+	if !m.fm.files[m.fm.pos].IsDir() {
+		filePath := filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name())
+		
+		// Check MIME type
+		mimeType := getMimeType(filePath)
+		if isTextFile(mimeType) {
+			file, err := os.Open(filePath)
+			if err == nil {
+				defer file.Close()
+				scanner := bufio.NewScanner(file)
+				var lines []string
+				for scanner.Scan() {
+					wrappedLines := wrapText(scanner.Text(), maxWidth)
+					lines = append(lines, wrappedLines...)
+					if len(lines) >= m.fm.maxH-4 {
+						break
+					}
+				}
+				if err := scanner.Err(); err == nil {
+					filePrev = prevStyle.Render(strings.Join(lines, "\n"))
+				}
+			}
+		}
+	}
+
 	var metaData metaData
 	var final string
 	var MBord = generateBorder()
-	if width-8 >= 0 {
-		MBord.Top = border_top + border_middle_top_left + " Metadata " + border_middle_top_right + strings.Repeat(border_top, width-8)
-	} else {
-		MBord.Top = border_top + border_middle_top_left + " Metadata " + border_middle_top_right
+	// Ensure repeat count is non-negative
+	repeatCountMeta := width - 8
+	if repeatCountMeta < 0 {
+		repeatCountMeta = 0
 	}
+	MBord.Top = border_top + border_middle_top_left + " Metadata " + border_middle_top_right + strings.Repeat(border_top, repeatCountMeta)
+	
 	if len(m.fm.files) > 0 {
-		metaData.name = m.fm.files[m.fm.pos].Name()
-		for i, _ := range metaData.name {
-			if i%width-1-len(" file name: ") == 0 {
-				metaData.name = metaData.name[:i] + "\n" + metaData.name[i:]
-			}
-		}
+		metaData.name = wrapTextSingleLine(m.fm.files[m.fm.pos].Name(), width-1-len(" file name: "))
 		if !m.fm.files[m.fm.pos].IsDir() {
 			fileStats, err := os.Stat(filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name()))
 			if err == nil {
@@ -391,19 +423,25 @@ func (m model) View() string {
 		if instruction != "" {
 			Finstruction += gray.Render(" | ") + red.Render(instruction)
 		}
-		metaData.instructions = Finstruction
 		final = gray.Render("File name: ") + white.Render(metaData.name) + "\n"
 		if !m.fm.files[m.fm.pos].IsDir() {
 			metaData.modTime = "\n" + strings.ReplaceAll(metaData.modTime, " ", "\n")
 			final += gray.Render("File size (bytes): ") + white.Render(fmt.Sprint(metaData.size)) + "\n" + gray.Render("Date modified: ") + white.Render(metaData.modTime) + "\n"
 		}
-		final += "\n" + metaData.instructions
 		lines := strings.Count(final, "\n")
 		if lines < 7 {
 			final += strings.Repeat("\n", 7-lines)
 		}
 	} else {
-		final = "This folder is empty | press q to quit"
+		final = "This folder is empty"
+		lines := strings.Count(final, "\n")
+		if lines < 7 {
+			final += strings.Repeat("\n", 7-lines)
+		}
+	}
+	Finstruction := gray.Render("press ") + lightGray.Render("q") + gray.Render(" to ") + lightGray.Render("quit")
+	if instruction != "" {
+		Finstruction += gray.Render(" | ") + red.Render(instruction)
 	}
 	metaStyle := lipgloss.NewStyle().
 		Width(width).
@@ -412,10 +450,54 @@ func (m model) View() string {
 		PaddingRight(1).
 		Align(lipgloss.Left).
 		PaddingLeft(1)
-	s += "\n" + metaStyle.Render(final)
+	s += lipgloss.JoinHorizontal(lipgloss.Top, lipgloss.JoinVertical(lipgloss.Center, combined, metaStyle.Render(final)), filePrev)
+	s += "\n" + Finstruction
 	instruction = ""
 	return s
 }
+
+func getMimeType(filePath string) string {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	// Read the first 512 bytes to determine the MIME type
+	buffer := make([]byte, 512)
+	_, err = file.Read(buffer)
+	if err != nil {
+		return ""
+	}
+
+	return http.DetectContentType(buffer)
+}
+
+func isTextFile(mimeType string) bool {
+	return strings.HasPrefix(mimeType, "text/") || mimeType == "application/json"
+}
+
+func wrapText(text string, maxWidth int) []string {
+	var wrapped []string
+	for len(text) > maxWidth {
+		wrapped = append(wrapped, text[:maxWidth])
+		text = text[maxWidth:]
+	}
+	wrapped = append(wrapped, text)
+	return wrapped
+}
+
+func wrapTextSingleLine(text string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return "…"
+	}
+	if len(text) > maxWidth {
+		return text[:maxWidth-1] + "…"
+	}
+	return text
+}
+
+
 
 func main() {
 	p = tea.NewProgram(initialModel())
