@@ -14,6 +14,8 @@ import (
 )
 
 var (
+	deleting bool = false
+
 	instruction = ""
 
 	p *tea.Program
@@ -245,6 +247,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "Q":
 			m.fm.quit = true
 			return m, tea.Quit
+		case "d", "D":
+			deleting = true
+			instruction += "Do you want to delete this file (y/n)? | "
+		case "y","Y":
+			if deleting{
+				os.Remove(filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name()))
+				m.RefreshFM()
+				deleting = false
+			}
+		case "n":
+			if deleting{
+				deleting=false
+			}
 		case "up":
 			if m.fm.pos > 0 {
 				m.fm.pos--
@@ -281,14 +296,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.fm.offset = 0
 					m.fm.files = files
 				} else if m.isLocked(nestedDir) {
-					instruction += "You don't have access to this folder"
+					instruction += "You don't have access to this folder | "
 				}
 			} else {
-				instruction += "this is a file not a folder"
+				instruction += "this is a file not a folder | "
 			}
 		}
 	}
 	return m, nil
+}
+
+func (m *model)RefreshFM(){
+	files,err:=os.ReadDir(m.fm.dir)
+	if err == nil{
+		m.fm.files = files
+	}else{
+		m.GoToParentDir()
+	}
+	if m.fm.pos>len(m.fm.files)-1{
+		m.fm.pos = len(m.fm.files)-1
+	}else if m.fm.pos < 0{
+		m.fm.pos=0
+	}
 }
 
 func (m *model) GoToParentDir(){
@@ -318,7 +347,6 @@ func (m model) View() string {
 	if err == nil{
 		m.fm.files = files
 	}else{
-		m.GoToParentDir()
 		m.GoToParentDir()
 	}
 	if m.fm.pos>len(m.fm.files)-1{
