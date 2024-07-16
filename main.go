@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"github.com/yorukot/ansichroma"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -42,9 +43,11 @@ type FM struct {
 	quit         bool
 	pos          int
 	height       int
+	fullWidth    int
 	offset       int
 	maxH         int
 	isFileLocked bool
+	fileContent  string
 }
 
 type IconStyle struct {
@@ -236,6 +239,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.fm.height = msg.Height - 3 // Adjust for header and footer
 		m.fm.maxH = m.fm.height - 10
+		m.fm.fullWidth = msg.Width-40
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "Q":
@@ -266,15 +270,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "left":
-			// Implement logic for going back a directory
-			parentDir := filepath.Dir(m.fm.dir)
-			files, err := os.ReadDir(parentDir)
-			if err == nil {
-				m.fm.dir = parentDir
-				m.fm.files = files
-				m.fm.pos = 0
-				m.fm.offset = 0
-			}
+			m.GoToParentDir()
 		case "right":
 			if m.fm.files[m.fm.pos].IsDir() {
 				nestedDir := filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name())
@@ -295,6 +291,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *model) GoToParentDir(){
+	// Implement logic for going back a directory
+	parentDir := filepath.Dir(m.fm.dir)
+	files, err := os.ReadDir(parentDir)
+	if err == nil {
+		m.fm.dir = parentDir
+		m.fm.files = files
+		m.fm.pos = 0
+		m.fm.offset = 0
+	}
+}
+
 func (m model) isLocked(filepath string) bool {
 	_, err := os.ReadDir(filepath)
 	return err != nil
@@ -306,9 +314,21 @@ func (m model) View() string {
 		p.RestoreTerminal()
 		return ""
 	}
+	files, err:=os.ReadDir(m.fm.dir)
+	if err == nil{
+		m.fm.files = files
+	}else{
+		m.GoToParentDir()
+		m.GoToParentDir()
+	}
+	if m.fm.pos>len(m.fm.files)-1{
+		m.fm.pos = len(m.fm.files)-1
+	}else if m.fm.pos < 0{
+		m.fm.pos=0
+	}
 	var s string
-	const maxWidth = 50
 	width := m.fm.height + 4
+	var maxWidth int = m.fm.fullWidth - width
 	folderName := filepath.Base(m.fm.dir)
 	border := generateBorder()
 	// Ensure repeat count is non-negative
@@ -369,7 +389,7 @@ func (m model) View() string {
 		prevStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("103")).
-			PaddingRight(2).
+			PaddingRight(1).
 			MarginLeft(2)
 
 		if !m.fm.files[m.fm.pos].IsDir() {
@@ -379,6 +399,10 @@ func (m model) View() string {
 				file, err := os.Open(filePath)
 				if err == nil {
 					defer file.Close()
+					fileConts, err:= os.ReadFile(filePath)
+					if err != nil{
+						m.fm.fileContent = string(fileConts[:])
+					}
 					scanner := bufio.NewScanner(file)
 					var lines []string
 					for scanner.Scan() {
@@ -389,8 +413,16 @@ func (m model) View() string {
 							break
 						}
 					}
-					if err := scanner.Err(); err == nil {
-						filePrev = prevStyle.Render(red.Render(strings.Join(lines, "\n")))
+					_,canH:=ansichroma.HighlightFromFile(filePath, 1, "", "") 
+					if canH == nil{
+					fileHighlight,Filerr := ansichroma.HightlightString(strings.Join(lines, "\n"), filepath.Ext(filepath.Base(filePath)),"onedark", "")
+					if Filerr == nil{
+						filePrev = prevStyle.Render(fileHighlight)
+					}else if err := scanner.Err(); err == nil{
+						filePrev = prevStyle.Render(lightGray.Render(strings.Join(lines, "\n")))
+					}
+					}else if err := scanner.Err(); err == nil{
+						filePrev = prevStyle.Render(lightGray.Render(strings.Join(lines, "\n")))
 					}
 				}
 			}
@@ -455,25 +487,6 @@ func (m model) View() string {
 }
 
 
-/*func isBinaryFile(filePath string) bool {
-    file, err := os.Open(filePath)
-    if err != nil {
-        return false
-    }
-    defer file.Close()
-
-    reader := bufio.NewReader(file)
-    for {
-        rune, _, err := reader.ReadRune()
-        if err != nil {
-            break
-        }
-        if rune == unicode.ReplacementChar && err != nil {
-            return true
-        }
-    }
-    return false
-}*/
 
 
 func isBinaryFile(filePath string) bool {
