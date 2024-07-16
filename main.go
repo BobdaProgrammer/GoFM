@@ -1,11 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"bufio"
+	"fmt"
 	"log"
 	"os"
-	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -318,7 +317,7 @@ func (m model) View() string {
 		repeatCount = 0
 	}
 	border.Top = border_top + border_middle_top_left + " " + folderName + " " + border_middle_top_right + strings.Repeat(border_top, repeatCount)
-	
+
 	boxStyle := lipgloss.NewStyle().
 		Width(width).
 		Align(lipgloss.Left).
@@ -365,39 +364,38 @@ func (m model) View() string {
 	}
 	combined := strings.Join(text, "\n")
 	combined = boxStyle.Render(combined)
-
-	prevStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("103")).
-		PaddingRight(2).
-		MarginLeft(2)
-
 	var filePrev string
-	if !m.fm.files[m.fm.pos].IsDir() {
-		filePath := filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name())
-		
-		// Check MIME type
-		mimeType := getMimeType(filePath)
-		if isTextFile(mimeType) {
-			file, err := os.Open(filePath)
-			if err == nil {
-				defer file.Close()
-				scanner := bufio.NewScanner(file)
-				var lines []string
-				for scanner.Scan() {
-					wrappedLines := wrapText(scanner.Text(), maxWidth)
-					lines = append(lines, wrappedLines...)
-					if len(lines) >= m.fm.maxH-4 {
-						break
+	if len(m.fm.files) > 0 {
+		prevStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("103")).
+			PaddingRight(2).
+			MarginLeft(2)
+
+		if !m.fm.files[m.fm.pos].IsDir() {
+			filePath := filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name())
+
+			if !isBinaryFile(filePath) {
+				file, err := os.Open(filePath)
+				if err == nil {
+					defer file.Close()
+					scanner := bufio.NewScanner(file)
+					var lines []string
+					for scanner.Scan() {
+						wrappedLines := wrapText(scanner.Text(), maxWidth)
+						lines = append(lines, wrappedLines...)
+						if len(lines) >= m.fm.height {
+							lines = lines[:m.fm.height]
+							break
+						}
 					}
-				}
-				if err := scanner.Err(); err == nil {
-					filePrev = prevStyle.Render(strings.Join(lines, "\n"))
+					if err := scanner.Err(); err == nil {
+						filePrev = prevStyle.Render(red.Render(strings.Join(lines, "\n")))
+					}
 				}
 			}
 		}
 	}
-
 	var metaData metaData
 	var final string
 	var MBord = generateBorder()
@@ -407,7 +405,7 @@ func (m model) View() string {
 		repeatCountMeta = 0
 	}
 	MBord.Top = border_top + border_middle_top_left + " Metadata " + border_middle_top_right + strings.Repeat(border_top, repeatCountMeta)
-	
+
 	if len(m.fm.files) > 0 {
 		metaData.name = wrapTextSingleLine(m.fm.files[m.fm.pos].Name(), width-1-len(" file name: "))
 		if !m.fm.files[m.fm.pos].IsDir() {
@@ -456,26 +454,53 @@ func (m model) View() string {
 	return s
 }
 
-func getMimeType(filePath string) string {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return ""
-	}
-	defer file.Close()
 
-	// Read the first 512 bytes to determine the MIME type
-	buffer := make([]byte, 512)
-	_, err = file.Read(buffer)
-	if err != nil {
-		return ""
-	}
+/*func isBinaryFile(filePath string) bool {
+    file, err := os.Open(filePath)
+    if err != nil {
+        return false
+    }
+    defer file.Close()
 
-	return http.DetectContentType(buffer)
+    reader := bufio.NewReader(file)
+    for {
+        rune, _, err := reader.ReadRune()
+        if err != nil {
+            break
+        }
+        if rune == unicode.ReplacementChar && err != nil {
+            return true
+        }
+    }
+    return false
+}*/
+
+
+func isBinaryFile(filePath string) bool {
+    const bufferSize = 8000
+    file, err := os.Open(filePath)
+    if err != nil {
+        return false
+    }
+    defer file.Close()
+
+    reader := bufio.NewReader(file)
+    buffer := make([]byte, bufferSize)
+    n, err := reader.Read(buffer)
+    if err != nil {
+        return false
+    }
+
+    for i := 0; i < n; i++ {
+        if buffer[i] > 0 && buffer[i] < 32 && buffer[i] != 9 && buffer[i] != 10 && buffer[i] != 13 {
+            return true
+        }
+    }
+
+    return false
 }
 
-func isTextFile(mimeType string) bool {
-	return strings.HasPrefix(mimeType, "text/") || mimeType == "application/json"
-}
+
 
 func wrapText(text string, maxWidth int) []string {
 	var wrapped []string
@@ -496,8 +521,6 @@ func wrapTextSingleLine(text string, maxWidth int) string {
 	}
 	return text
 }
-
-
 
 func main() {
 	p = tea.NewProgram(initialModel())
