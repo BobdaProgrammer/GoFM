@@ -1,14 +1,14 @@
+//A simple file manager in go
+
+
 package main
 
 import (
 	"bufio"
 	"fmt"
-	//"github.com/jedib0t/go-pretty/v6/text"
-	//"github.com/muesli/reflow/wordwrap"
 	"log"
 	"os"
 	"path/filepath"
-	//"github.com/acarl005/stripansi"
 	"github.com/yorukot/ansichroma"
 	"strings"
 
@@ -17,12 +17,17 @@ import (
 )
 
 var (
+	//actions
 	deleting bool = false
 
+
+	//any info to tell the user
 	instruction = ""
 
 	p *tea.Program
 
+
+	//border characters
 	border_top              = "─"
 	border_bottom           = "─"
 	border_left             = "│"
@@ -42,6 +47,7 @@ var (
 	grayCol   = lipgloss.Color("#484a48")
 )
 
+//the file manager
 type FM struct {
 	dir          string
 	files        []os.DirEntry
@@ -55,11 +61,13 @@ type FM struct {
 	fileContent  string
 }
 
+//Icon
 type IconStyle struct {
 	Icon  string
 	Color string
 }
 
+//Icons for folder and file images
 var Icons = map[string]IconStyle{
 	"ai": {
 		Icon:  "",
@@ -177,18 +185,20 @@ var Icons = map[string]IconStyle{
 	"zip":          {Icon: "\uf410", Color: "#e74c3c"},
 }
 
+//The metadate we find from each file
 type metaData struct {
 	name    string
 	size    int32
 	modTime string
 }
 
-// Model defines the application's state
+// Model defines the application's state, contains the parts of the app
 type model struct {
 	fm   FM
 	meta metaData
 }
 
+//creates a border with our border characters
 func generateBorder() lipgloss.Border {
 	return lipgloss.Border{
 		Top:         border_top,
@@ -202,6 +212,7 @@ func generateBorder() lipgloss.Border {
 	}
 }
 
+//find the icon in the list for a filename
 func getFileIcon(filename string) (string, string) {
 	ext := strings.TrimPrefix(filepath.Ext(filename), ".")
 	iconStyle, exists := Icons[ext]
@@ -241,34 +252,42 @@ func (m model) Init() tea.Cmd {
 // Update is called when messages are received
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	//If resize and also at the start
 	case tea.WindowSizeMsg:
 		m.fm.height = msg.Height - 3 // Adjust for header and footer
 		m.fm.maxH = m.fm.height - 10
 		m.fm.fullWidth = msg.Width-40
+	//if a key is pressed
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "Q":
+			//quit
 			m.fm.quit = true
 			return m, tea.Quit
 		case "d", "D":
+			//add instruction and tell model we may be deleting
 			deleting = true
 			instruction += "Do you want to delete this file (y/n)? | "
 		case "y","Y":
 			if deleting{
+				//if deleting, remove the file, refresh the screen and tell model we aren't deleting
 				os.Remove(filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name()))
 				m.RefreshFM()
 				deleting = false
 			}
 		case "n":
+			//cancel any actions
 			if deleting{
 				deleting=false
 			}
 		case "up":
+			//if not at the first file move up
 			if m.fm.pos > 0 {
 				m.fm.pos--
 				if m.fm.pos < m.fm.offset {
 					m.fm.offset--
 				}
+				//check if the file is locked
 				if m.isLocked(filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name())) {
 					m.fm.isFileLocked = true
 				} else {
@@ -276,11 +295,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "down":
+			//if not at bottom of the list of files, go down
 			if m.fm.pos < len(m.fm.files)-1 {
 				m.fm.pos++
 				if m.fm.pos >= m.fm.offset+m.fm.maxH {
 					m.fm.offset++
 				}
+				//check if file is locked
 				if m.isLocked(filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name())) {
 					m.fm.isFileLocked = true
 				} else {
@@ -288,8 +309,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "left":
+			//go to parent directory
 			m.GoToParentDir()
 		case "right":
+			//open directory if file is a folder if not a folder, tell the user
 			if m.fm.files[m.fm.pos].IsDir() {
 				nestedDir := filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name())
 				files, err := os.ReadDir(nestedDir)
@@ -309,6 +332,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+//refreshes the screen
 func (m *model)RefreshFM(){
 	files,err:=os.ReadDir(m.fm.dir)
 	if err == nil{
@@ -324,10 +348,12 @@ func (m *model)RefreshFM(){
 }
 
 func (m *model) GoToParentDir(){
-	// Implement logic for going back a directory
+	//find the directory above the current
 	parentDir := filepath.Dir(m.fm.dir)
+	//read directory
 	files, err := os.ReadDir(parentDir)
 	if err == nil {
+		//reset most things on model
 		m.fm.dir = parentDir
 		m.fm.files = files
 		m.fm.pos = 0
@@ -336,6 +362,7 @@ func (m *model) GoToParentDir(){
 }
 
 func (m model) isLocked(filepath string) bool {
+	//if an err the file is probably locked, that was the only error I encountered in testing
 	_, err := os.ReadDir(filepath)
 	return err != nil
 }
@@ -343,9 +370,11 @@ func (m model) isLocked(filepath string) bool {
 // View is called to render the UI
 func (m model) View() string {
 	if m.fm.quit {
+		//go back to default screen
 		p.RestoreTerminal()
 		return ""
 	}
+	//read directory and do saftey checks
 	files, err:=os.ReadDir(m.fm.dir)
 	if err == nil{
 		m.fm.files = files
@@ -357,6 +386,7 @@ func (m model) View() string {
 	}else if m.fm.pos < 0{
 		m.fm.pos=0
 	}
+	//set widths
 	var s string
 	width := m.fm.height + 4
 	var maxWidth int = 70
@@ -367,6 +397,7 @@ func (m model) View() string {
 	if repeatCount < 0 {
 		repeatCount = 0
 	}
+	//make borders and some styles
 	border.Top = border_top + border_middle_top_left + " " + folderName + " " + border_middle_top_right + strings.Repeat(border_top, repeatCount)
 
 	boxStyle := lipgloss.NewStyle().
@@ -380,8 +411,11 @@ func (m model) View() string {
 		Foreground(lipgloss.Color("105"))
 	currfileStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("115"))
+
+	
 	var Otext []string
 
+	//Get the contents of the directory onto the screen
 	for i := m.fm.offset; i < m.fm.offset+m.fm.maxH; i++ {
 		if i < len(m.fm.files) {
 			name := m.fm.files[i].Name()
@@ -415,36 +449,45 @@ func (m model) View() string {
 	}
 	combined := strings.Join(Otext, "\n")
 	combined = boxStyle.Render(combined)
+
+	//previewing the file
 	var filePrev string
 	if len(m.fm.files) > 0 {
+		//styles+borders
 		prevBord:=generateBorder()
-		prevBord.Top = border_top + border_middle_top_left + " " + m.fm.files[m.fm.pos].Name()+strings.Repeat(border_top,maxWidth-len(m.fm.files[m.fm.pos].Name())-3)
+		prevBord.Top = border_top + border_middle_top_left + " " + m.fm.files[m.fm.pos].Name()+" "+border_middle_top_right+strings.Repeat(border_top,maxWidth-len(m.fm.files[m.fm.pos].Name())-5)
 		prevStyle := lipgloss.NewStyle().
 			Border(prevBord).
 			BorderForeground(lipgloss.Color("103")).
 			MaxWidth(maxWidth+3).
 			MarginLeft(2).
 			PaddingRight(1)
+		//use this to cut the text if it is too long
 		cutter:=lipgloss.NewStyle().MaxWidth(maxWidth-5).MaxHeight(m.fm.height)
 
+		//if what we are on isnt a directory
 		if !m.fm.files[m.fm.pos].IsDir() {
 			filePath := filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name())
-
+			//check if the file is readable (not binary)
 			if !isBinaryFile(filePath) {
+				//open file
 				file, err := os.Open(filePath)
 				if err == nil {
 					defer file.Close()
+					//get contents
 					fileConts, err:= os.ReadFile(filePath)
 					if err != nil{
 						m.fm.fileContent = string(fileConts[:])
 					}
 					
 					var lines []string
+					//see if we can highlight the text
 					highlightedText, err := ansichroma.HighlightFromFile(filePath, m.fm.height, "gruvbox", "")
 					if err==nil{
-						highlightText:=strings.Split(highlightedText,"\n")
-						filePrev = prevStyle.Render(cutter.Render(strings.Join(highlightText,"\n")))
+						//cut the text to right width and height if it is too long then render
+						filePrev = prevStyle.Render(cutter.Render(highlightedText))
 					}else{
+						//read the file as a stream, wrap it, then render it
 						scanner := bufio.NewScanner(file)
 
 						for scanner.Scan() {
@@ -461,6 +504,7 @@ func (m model) View() string {
 			}
 		}
 	}
+	//initialize variables
 	var metaData metaData
 	var final string
 	var MBord = generateBorder()
@@ -469,10 +513,13 @@ func (m model) View() string {
 	if repeatCountMeta < 0 {
 		repeatCountMeta = 0
 	}
+	//make border
 	MBord.Top = border_top + border_middle_top_left + " Metadata " + border_middle_top_right + strings.Repeat(border_top, repeatCountMeta)
-
+	//if not in a empty directory
 	if len(m.fm.files) > 0 {
+		//get name and wrap
 		metaData.name = wrapTextSingleLine(m.fm.files[m.fm.pos].Name(), width-1-len(" file name: "))
+		//get the last mod time and size if it is a file
 		if !m.fm.files[m.fm.pos].IsDir() {
 			fileStats, err := os.Stat(filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name()))
 			if err == nil {
@@ -482,30 +529,31 @@ func (m model) View() string {
 				panic(err)
 			}
 		}
-		Finstruction := gray.Render("press ") + lightGray.Render("q") + gray.Render(" to ") + lightGray.Render("quit")
-		if instruction != "" {
-			Finstruction += gray.Render(" | ") + red.Render(instruction)
-		}
 		final = gray.Render("File name: ") + white.Render(metaData.name) + "\n"
+		//render
 		if !m.fm.files[m.fm.pos].IsDir() {
 			metaData.modTime = "\n" + strings.ReplaceAll(metaData.modTime, " ", "\n")
 			final += gray.Render("File size (bytes): ") + white.Render(fmt.Sprint(metaData.size)) + "\n" + gray.Render("Date modified: ") + white.Render(metaData.modTime) + "\n"
 		}
 		lines := strings.Count(final, "\n")
+		//add blank space to fill in any gap
 		if lines < 7 {
 			final += strings.Repeat("\n", 7-lines)
 		}
 	} else {
+		//say the folder is empty and fill in the space
 		final = "This folder is empty"
 		lines := strings.Count(final, "\n")
 		if lines < 7 {
 			final += strings.Repeat("\n", 7-lines)
 		}
 	}
+	//instruction handling
 	Finstruction := gray.Render("press ") + lightGray.Render("q") + gray.Render(" to ") + lightGray.Render("quit")
 	if instruction != "" {
 		Finstruction += gray.Render(" | ") + red.Render(instruction)
 	}
+	//border
 	metaStyle := lipgloss.NewStyle().
 		Width(width).
 		Border(MBord).
@@ -513,6 +561,7 @@ func (m model) View() string {
 		PaddingRight(1).
 		Align(lipgloss.Left).
 		PaddingLeft(1)
+	//add it all together
 	s += lipgloss.JoinHorizontal(lipgloss.Top, lipgloss.JoinVertical(lipgloss.Center, combined, metaStyle.Render(final)), filePrev)
 	s += "\n" + Finstruction
 	instruction = ""
@@ -522,14 +571,17 @@ func (m model) View() string {
 
 
 func isBinaryFile(filePath string) bool {
+	//create a buffer
     const bufferSize = 8000
+	//open file
     file, err := os.Open(filePath)
     if err != nil {
         return false
     }
     defer file.Close()
-
+	//read the file as a stream
     reader := bufio.NewReader(file)
+	//make empty buffer the size of buffer size (8000)
     buffer := make([]byte, bufferSize)
     n, err := reader.Read(buffer)
     if err != nil {
@@ -548,6 +600,7 @@ func isBinaryFile(filePath string) bool {
 
 
 func wrapText(text string, maxWidth int) []string {
+	//if to long make a new part of the array to simulate new line
 	var wrapped []string
 	for len(text) > maxWidth {
 		wrapped = append(wrapped, text[:maxWidth])
@@ -558,6 +611,7 @@ func wrapText(text string, maxWidth int) []string {
 }
 
 func wrapTextSingleLine(text string, maxWidth int) string {
+	//if too long, truncate and add: …
 	if maxWidth <= 0 {
 		return "…"
 	}
@@ -568,8 +622,11 @@ func wrapTextSingleLine(text string, maxWidth int) string {
 }
 
 func main() {
+	//make a new program
 	p = tea.NewProgram(initialModel())
+	// I don't care if it is deprecated EnterAltScreen was the only thing that worked
 	p.EnterAltScreen()
+	//same with p.Start() it was just easier
 	if err := p.Start(); err != nil {
 		fmt.Printf("Error: %v", err)
 		os.Exit(1)
