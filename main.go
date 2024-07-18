@@ -3,9 +3,12 @@ package main
 import (
 	"bufio"
 	"fmt"
+	//"github.com/jedib0t/go-pretty/v6/text"
+	//"github.com/muesli/reflow/wordwrap"
 	"log"
 	"os"
 	"path/filepath"
+	//"github.com/acarl005/stripansi"
 	"github.com/yorukot/ansichroma"
 	"strings"
 
@@ -356,7 +359,7 @@ func (m model) View() string {
 	}
 	var s string
 	width := m.fm.height + 4
-	var maxWidth int = m.fm.fullWidth - width
+	var maxWidth int = 70
 	folderName := filepath.Base(m.fm.dir)
 	border := generateBorder()
 	// Ensure repeat count is non-negative
@@ -377,7 +380,7 @@ func (m model) View() string {
 		Foreground(lipgloss.Color("105"))
 	currfileStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("115"))
-	var text []string
+	var Otext []string
 
 	for i := m.fm.offset; i < m.fm.offset+m.fm.maxH; i++ {
 		if i < len(m.fm.files) {
@@ -405,20 +408,24 @@ func (m model) View() string {
 					before = "\uf115 "
 				}
 			}
-			text = append(text, beforeStyle.Render(before)+style.Render(name))
+			Otext = append(Otext, beforeStyle.Render(before)+style.Render(name))
 		} else {
-			text = append(text, "")
+			Otext = append(Otext, "")
 		}
 	}
-	combined := strings.Join(text, "\n")
+	combined := strings.Join(Otext, "\n")
 	combined = boxStyle.Render(combined)
 	var filePrev string
 	if len(m.fm.files) > 0 {
+		prevBord:=generateBorder()
+		prevBord.Top = border_top + border_middle_top_left + " " + m.fm.files[m.fm.pos].Name()+strings.Repeat(border_top,maxWidth-len(m.fm.files[m.fm.pos].Name())-3)
 		prevStyle := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
+			Border(prevBord).
 			BorderForeground(lipgloss.Color("103")).
-			PaddingRight(1).
-			MarginLeft(2)
+			MaxWidth(maxWidth+3).
+			MarginLeft(2).
+			PaddingRight(1)
+		cutter:=lipgloss.NewStyle().MaxWidth(maxWidth-5).MaxHeight(m.fm.height)
 
 		if !m.fm.files[m.fm.pos].IsDir() {
 			filePath := filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name())
@@ -431,25 +438,23 @@ func (m model) View() string {
 					if err != nil{
 						m.fm.fileContent = string(fileConts[:])
 					}
-					scanner := bufio.NewScanner(file)
+					
 					var lines []string
-					for scanner.Scan() {
-						wrappedLines := wrapText(scanner.Text(), maxWidth)
-						lines = append(lines, wrappedLines...)
-						if len(lines) >= m.fm.height {
-							lines = lines[:m.fm.height]
-							break
+					highlightedText, err := ansichroma.HighlightFromFile(filePath, m.fm.height, "gruvbox", "")
+					if err==nil{
+						highlightText:=strings.Split(highlightedText,"\n")
+						filePrev = prevStyle.Render(cutter.Render(strings.Join(highlightText,"\n")))
+					}else{
+						scanner := bufio.NewScanner(file)
+
+						for scanner.Scan() {
+							wrappedLines := wrapText(scanner.Text(), maxWidth-5)
+							lines = append(lines, wrappedLines...)
+							if len(lines) >= m.fm.height {
+								lines = lines[:m.fm.height]
+								break
+							}
 						}
-					}
-					_,canH:=ansichroma.HighlightFromFile(filePath, 1, "", "") 
-					if canH == nil{
-					fileHighlight,Filerr := ansichroma.HightlightString(strings.Join(lines, "\n"), filepath.Ext(filepath.Base(filePath)),"onedark", "")
-					if Filerr == nil{
-						filePrev = prevStyle.Render(fileHighlight)
-					}else if err := scanner.Err(); err == nil{
-						filePrev = prevStyle.Render(lightGray.Render(strings.Join(lines, "\n")))
-					}
-					}else if err := scanner.Err(); err == nil{
 						filePrev = prevStyle.Render(lightGray.Render(strings.Join(lines, "\n")))
 					}
 				}
@@ -513,7 +518,6 @@ func (m model) View() string {
 	instruction = ""
 	return s
 }
-
 
 
 
