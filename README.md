@@ -23,11 +23,19 @@
 A simple but pretty terminal file manager written in go. traverse files with ease without touching the mouse. Get a preview of your files (with syntax highlighting if your file type is supported) and check the metadata.  
 Get quick instructions at the bottom of the screen telling you if something is wrong. you can also delete files
 
+## installation
+currently you can only build from source or download the exe from the latest release but soon it may be available in different ways 
+
 ## screenshots
 <div align="center">
 <img src="https://github.com/BobdaProgrammer/GoFM/blob/main/.github/goFile.png?raw=true" width="500px">
 <img src="https://github.com/BobdaProgrammer/GoFM/blob/main/.github/pyFile.png?raw=true" width="500px">
-</div>
+</div>  
+
+-------------
+> [!TIP]
+> use nerd fonts for better experience 
+
 
 ## coming soon
 - rename file/folder
