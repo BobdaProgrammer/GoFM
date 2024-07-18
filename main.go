@@ -482,7 +482,7 @@ func (m model) View() string {
 					
 					var lines []string
 					//see if we can highlight the text
-					highlightedText, err := ansichroma.HighlightFromFile(filePath, m.fm.height, "gruvbox", "")
+					highlightedText, err := ansichroma.HighlightFromFile(filePath, m.fm.height, "witchhazel", "")
 					if err==nil{
 						//cut the text to right width and height if it is too long then render
 						filePrev = prevStyle.Render(cutter.Render(highlightedText))
