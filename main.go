@@ -226,6 +226,9 @@ func getFileIcon(filename string) (string, string) {
 // Initialize the model
 func initialModel() model {
 	pwd, _ := os.Getwd()
+	if len(os.Args) > 1 {
+		pwd, _ = filepath.Abs(os.Args[1])
+	}
 	files, err := os.ReadDir(pwd)
 	if err != nil {
 		log.Fatal("couldn't fetch directory")
