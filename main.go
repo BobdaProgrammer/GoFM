@@ -8,6 +8,7 @@ import (
 	"github.com/yorukot/ansichroma"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -327,6 +328,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				instruction += "this is a file not a folder | "
 			}
+		case "enter":
+			exec.Command("cmd", "/c", "start", filepath.Join(m.fm.dir, m.fm.files[m.fm.pos].Name())).Output()
 		}
 	}
 	return m, nil
