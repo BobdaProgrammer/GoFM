@@ -37,9 +37,9 @@ currently you can only build from source or download the exe from the latest rel
 > use nerd fonts for better experience 
 
 
-## coming soon
-- rename file/folder
-- move file/folder
-- copy file/folder
-- paste file/folder
-- open file/folder in default text editor
+## plans
+- [ ] rename file/folder
+- [ ] move file/folder
+- [ ] copy file/folder
+- [ ] paste file/folder
+- [x] open file/folder in default text editor
