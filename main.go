@@ -65,6 +65,23 @@ type IconStyle struct {
 	Color string
 }
 
+//Icons for special directories
+var DirIcons = map[string]IconStyle{
+	".config":     {Icon: "", Color: "NONE"},
+	".git":        {Icon: "", Color: "NONE"},
+	"Desktop":     {Icon: "", Color: "NONE"},
+	"Development": {Icon: "", Color: "NONE"},
+	"Documents":   {Icon: "", Color: "NONE"},
+	"Downloads":   {Icon: "", Color: "NONE"},
+	"Library":     {Icon: "", Color: "NONE"},
+	"Movies":      {Icon: "", Color: "NONE"},
+	"Music":       {Icon: "", Color: "NONE"},
+	"Pictures":    {Icon: "", Color: "NONE"},
+	"Public":      {Icon: "", Color: "NONE"},
+	"Videos":      {Icon: "", Color: "NONE"},
+	"Folder":	   {Icon: "\uf115", Color: "NONE" },
+}
+
 // Icons for folder and file images
 var Icons = map[string]IconStyle{
 	"ai": {
@@ -216,6 +233,19 @@ func getFileIcon(filename string) (string, string) {
 	iconStyle, exists := Icons[ext]
 	if !exists {
 		iconStyle = Icons["file"] // Default icon if extension not found
+	}
+	color := iconStyle.Color
+	if color == "NONE" {
+		return color, iconStyle.Icon
+	}
+	return color, iconStyle.Icon
+}
+
+// find the icon in the list for a filename
+func getDirIcon(filename string) (string, string) {
+	iconStyle, exists := DirIcons[filename]
+	if !exists {
+		iconStyle = DirIcons["Folder"] // Default icon if extension not found
 	}
 	color := iconStyle.Color
 	if color == "NONE" {
@@ -441,7 +471,11 @@ func (m model) View() string {
 					before = "\uf023 "
 					beforeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("F44336"))
 				} else {
-					before = "\uf115 "
+					color, Icon := getDirIcon(m.fm.files[i].Name())
+					before = Icon + " "
+					if color != "NONE" {
+						beforeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+					}
 				}
 			}
 			Otext = append(Otext, beforeStyle.Render(before)+style.Render(name))
